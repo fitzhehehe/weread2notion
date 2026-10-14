@@ -176,8 +176,32 @@ class PublisherTest(unittest.TestCase):
         self.assertEqual(payload["serverBaseUrl"], "")
         self.assertEqual(payload["adapterClass"], "com.aggregator.test.TestChannelAdapter")
         self.assertEqual(payload["placements"]["reward_main"], "0")
+        for channel, class_name in {
+            "oppo": "com.aggregator.channel.oppo.OppoAdapter",
+            "vivo": "com.aggregator.channel.vivo.VivoAdapter",
+            "huawei": "com.aggregator.channel.huawei.HuaweiAdapter",
+            "xiaomi": "com.aggregator.channel.xiaomi.XiaomiAdapter",
+        }.items():
+            subprocess.check_call(
+                [
+                    sys.executable,
+                    str(ROOT / "packager" / "pack.py"),
+                    "--app-id",
+                    "g1",
+                    "--channel",
+                    channel,
+                    "--offline",
+                    "--param",
+                    "channelAppId=store-app",
+                    "--out",
+                    out,
+                ]
+            )
+            packed = json.loads(Path(out).read_text())
+            self.assertEqual(packed["adapterClass"], class_name)
+            self.assertEqual(packed["channelParams"]["channelAppId"], "store-app")
         result = subprocess.run(
-            [sys.executable, str(ROOT / "packager" / "pack.py"), "--app-id", "g1", "--channel", "vivo", "--offline", "--out", out],
+            [sys.executable, str(ROOT / "packager" / "pack.py"), "--app-id", "g1", "--channel", "bilibili", "--offline", "--out", out],
             capture_output=True,
             text=True,
         )

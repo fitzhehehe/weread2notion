@@ -11,6 +11,10 @@ import urllib.request
 
 ADAPTERS = {
     "test": "com.aggregator.test.TestChannelAdapter",
+    "oppo": "com.aggregator.channel.oppo.OppoAdapter",
+    "vivo": "com.aggregator.channel.vivo.VivoAdapter",
+    "huawei": "com.aggregator.channel.huawei.HuaweiAdapter",
+    "xiaomi": "com.aggregator.channel.xiaomi.XiaomiAdapter",
 }
 
 
@@ -23,6 +27,7 @@ def main() -> None:
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--adapter-class", default="")
     parser.add_argument("--placement", action="append", default=[])
+    parser.add_argument("--param", action="append", default=[])
     parser.add_argument("--from-server", default="")
     args = parser.parse_args()
 
@@ -35,6 +40,10 @@ def main() -> None:
     for item in args.placement:
         placement_id, slot = item.split("=", 1)
         placements[placement_id] = slot
+    channel_params = {}
+    for item in args.param:
+        key, value = item.split("=", 1)
+        channel_params[key] = value
     server_reward = False
     if args.from_server:
         query = urllib.parse.urlencode({"appId": args.app_id, "channelCode": args.channel})
@@ -51,6 +60,7 @@ def main() -> None:
         "serverReward": server_reward and not args.offline,
         "adapterClass": adapter,
         "placements": placements,
+        "channelParams": channel_params,
     }
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)

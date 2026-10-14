@@ -82,7 +82,7 @@ public final class SdkTest {
                 fail("这次支付不应记激励");
             }
         };
-        AggregatorConfig config = new AggregatorConfig("g1", "test", "http://127.0.0.1", false, "", Map.of());
+        AggregatorConfig config = new AggregatorConfig("g1", "test", "http://127.0.0.1", false, "", Map.of(), Map.of());
         AggregatorSdk sdk = new AggregatorSdk(config, new TestChannelAdapter(), server);
         sdk.init(ok());
         sdk.pay(new PayRequest("", "gem_6", "g1", "u", "r", 1), result -> {
@@ -132,7 +132,7 @@ public final class SdkTest {
                 eq(TestChannelAdapter.CHANNEL_USER_ID, channelUserId, "渠道用户");
             }
         };
-        AggregatorConfig config = new AggregatorConfig("g1", "test", "http://127.0.0.1", true, "", Map.of());
+        AggregatorConfig config = new AggregatorConfig("g1", "test", "http://127.0.0.1", true, "", Map.of(), Map.of());
         AggregatorSdk sdk = new AggregatorSdk(config, new TestChannelAdapter(), server);
         sdk.init(ok());
         sdk.login(new LoginCallback() {
@@ -193,7 +193,7 @@ public final class SdkTest {
 
     private static AggregatorSdk sdk(PublisherServer server, boolean withServerFlag) {
         AggregatorConfig config = new AggregatorConfig(
-                "g1", "test", withServerFlag ? "http://127.0.0.1" : "", false, "", Map.of("reward_main", "0"));
+                "g1", "test", withServerFlag ? "http://127.0.0.1" : "", false, "", Map.of("reward_main", "0"), Map.of());
         return new AggregatorSdk(config, new TestChannelAdapter(), withServerFlag ? server : null);
     }
 
@@ -225,7 +225,8 @@ public final class SdkTest {
                 "",
                 false,
                 "com.aggregator.test.TestChannelAdapter",
-                Map.of("reward_main", "0"));
+                Map.of("reward_main", "0"),
+                Map.of());
     }
 
     private static ResultCallback ok() {

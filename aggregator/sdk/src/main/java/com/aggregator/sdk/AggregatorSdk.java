@@ -44,8 +44,19 @@ public final class AggregatorSdk {
                 return;
             }
         }
-        ready = true;
-        callback.onSuccess();
+        ChannelRuntime.bind(config);
+        adapter.prepare(new ResultCallback() {
+            @Override
+            public void onSuccess() {
+                ready = true;
+                callback.onSuccess();
+            }
+
+            @Override
+            public void onFailure(String message) {
+                callback.onFailure(message);
+            }
+        });
     }
 
     public void login(LoginCallback callback) {

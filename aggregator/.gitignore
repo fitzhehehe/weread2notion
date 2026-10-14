@@ -1,4 +1,5 @@
 sdk/build/
+channels/build/
 server/data/
 __pycache__/
 *.sqlite

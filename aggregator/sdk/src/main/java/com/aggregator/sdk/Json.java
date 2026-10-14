@@ -6,16 +6,16 @@ import java.util.List;
 import java.util.Map;
 
 /** 只覆盖本 SDK 的请求和配置，不是通用 JSON 库。 */
-final class Json {
+public final class Json {
     private Json() {}
 
-    static String stringify(Object value) {
+    public static String stringify(Object value) {
         StringBuilder out = new StringBuilder();
         write(out, value);
         return out.toString();
     }
 
-    static Object parse(String text) {
+    public static Object parse(String text) {
         Parser parser = new Parser(text);
         Object value = parser.parseValue();
         parser.skip();
@@ -25,7 +25,7 @@ final class Json {
         return value;
     }
 
-    static Map<String, Object> object(String text) {
+    public static Map<String, Object> object(String text) {
         Object value = parse(text);
         if (!(value instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException("需要 JSON 对象");
@@ -37,7 +37,7 @@ final class Json {
         return out;
     }
 
-    static String text(Map<String, Object> object, String key) {
+    public static String text(Map<String, Object> object, String key) {
         Object value = object.get(key);
         return value == null ? "" : String.valueOf(value);
     }

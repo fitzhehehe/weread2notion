@@ -1,7 +1,10 @@
 package com.aggregator.android;
 
 import android.app.Activity;
+import android.content.Intent;
+import com.aggregator.sdk.ActivityResults;
 import com.aggregator.sdk.EngineEvents;
+import com.aggregator.sdk.Host;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +21,7 @@ public final class AggregatorBridge {
             while ((line = in.readLine()) != null) {
                 json.append(line);
             }
+            Host.setActivity(activity);
             EngineEvents.start(json.toString());
         } catch (Exception e) {
             EngineEvents.reset();
@@ -49,5 +53,9 @@ public final class AggregatorBridge {
     public static String poll() {
         String event = EngineEvents.poll();
         return event == null ? "" : event;
+    }
+
+    public static void onActivityResult(int requestCode, int resultCode, Intent data) {
+        ActivityResults.dispatch(requestCode, resultCode, data);
     }
 }

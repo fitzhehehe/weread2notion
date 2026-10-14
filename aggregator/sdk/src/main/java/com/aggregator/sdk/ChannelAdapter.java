@@ -7,6 +7,11 @@ package com.aggregator.sdk;
 public interface ChannelAdapter {
     String channelCode();
 
+    /** 隐私同意后的渠道初始化。登录之前调用。 */
+    default void prepare(ResultCallback callback) {
+        callback.onSuccess();
+    }
+
     void login(LoginCallback callback);
 
     void submitRole(RoleInfo role, ResultCallback callback);
