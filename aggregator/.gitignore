@@ -1,5 +1,7 @@
 sdk/build/
 channels/build/
+vendor/*
+!vendor/README.md
 server/data/
 __pycache__/
 *.sqlite
