@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>发行后台</title>
+  <style>
+    body { font-family: sans-serif; margin: 24px; color: #1a1a1a; background: #fff; }
+    h1 { font-size: 22px; font-weight: 600; }
+    h2 { font-size: 16px; margin-top: 28px; }
+    form, .card { border: 1px solid #ddd; padding: 12px; margin: 8px 0; }
+    label { display: block; margin: 8px 0; }
+    input, select, button { font: inherit; padding: 4px 8px; }
+    button { cursor: pointer; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border-bottom: 1px solid #eee; text-align: left; padding: 6px; vertical-align: top; }
+    .error { color: #8a1f1f; }
+    .muted { color: #555; }
+  </style>
+</head>
+<body>
+  <h1>发行后台</h1>
+  <p class="muted">登录不经过这里。这里配置游戏、商品、渠道参数和广告位，并查看支付订单。不保存游戏存档。</p>
+  <p id="error" class="error"></p>
+
+  <h2>新建游戏</h2>
+  <form id="game-form">
+    <label>名称 <input name="name" required></label>
+    <label>类型
+      <select name="kind">
+        <option value="offline">单机</option>
+        <option value="online">网游</option>
+      </select>
+    </label>
+    <label>支付通知地址 <input name="payNotifyUrl" placeholder="没有游戏服就留空"></label>
+    <button type="submit">创建</button>
+  </form>
+  <pre id="created"></pre>
+
+  <h2>游戏</h2>
+  <div id="games"></div>
+
+  <h2 id="detail-title">配置</h2>
+  <div id="detail" class="muted">先选一款游戏。</div>
+
+  <script>
+    const error = document.querySelector("#error");
+    let current = "";
+
+    async function api(path, options) {
+      const response = await fetch(path, options);
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.error || response.statusText);
+      return body;
+    }
+
+    function showError(exc) {
+      error.textContent = exc.message || String(exc);
+    }
+
+    async function loadGames() {
+      const games = await api("/api/games");
+      const box = document.querySelector("#games");
+      box.innerHTML = "";
+      games.forEach((game) => {
+        const button = document.createElement("button");
+        button.textContent = game.name + " · " + game.app_id + " · " + (game.kind === "offline" ? "单机" : "网游");
+        button.onclick = () => openGame(game.app_id);
+        box.appendChild(button);
+        box.appendChild(document.createTextNode(" "));
+      });
+    }
+
+    async function openGame(appId) {
+      current = appId;
+      error.textContent = "";
+      const detail = await api("/api/games/" + appId);
+      document.querySelector("#detail-title").textContent = detail.game.name;
+      const root = document.querySelector("#detail");
+      root.className = "";
+      root.innerHTML = "";
+      root.appendChild(line("appId " + detail.game.app_id));
+      root.appendChild(line("appKey " + detail.game.app_key));
+      root.appendChild(line(detail.game.kind === "offline" ? "单机：不记录激励，不存档" : "网游：可以记录激励完成单"));
+      root.appendChild(formProduct());
+      root.appendChild(formChannel());
+      root.appendChild(formPlacement());
+      root.appendChild(table("商品", ["product_id", "name", "amount_fen"], detail.products));
+      root.appendChild(table("渠道", ["channel_code", "channel_app_id", "package_name"], detail.channels));
+      root.appendChild(table("广告位", ["placement_id", "ad_type", "channel_code", "channel_slot_id"], detail.placements));
+      root.appendChild(table("订单", ["order_id", "product_id", "amount_fen", "status", "channel_user_id"], detail.orders));
+    }
+
+    function line(text) {
+      const p = document.createElement("p");
+      p.textContent = text;
+      return p;
+    }
+
+    function formProduct() {
+      const form = document.createElement("form");
+      form.innerHTML = "<h2>商品</h2><label>商品 ID <input name='productId' required></label><label>名称 <input name='name' required></label><label>金额（分） <input name='amountFen' type='number' min='1' required></label><button>保存</button>";
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        data.amountFen = Number(data.amountFen);
+        try {
+          await api("/api/games/" + current + "/products", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+          await openGame(current);
+        } catch (exc) { showError(exc); }
+      };
+      return form;
+    }
+
+    function formChannel() {
+      const form = document.createElement("form");
+      form.innerHTML = "<h2>渠道</h2><label>渠道编码 <input name='channelCode' value='test' required></label><label>渠道 appId <input name='channelAppId'></label><label>包名 <input name='packageName'></label><label>渠道密钥 <input name='channelSecret' required></label><button>保存</button>";
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        try {
+          await api("/api/games/" + current + "/channels", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+          await openGame(current);
+        } catch (exc) { showError(exc); }
+      };
+      return form;
+    }
+
+    function formPlacement() {
+      const form = document.createElement("form");
+      form.innerHTML = "<h2>广告位</h2><label>聚合广告位 <input name='placementId' value='reward_main' required></label><label>类型 <select name='adType'><option value='reward'>激励视频</option><option value='interstitial'>插屏</option><option value='splash'>开屏</option><option value='banner'>Banner</option></select></label><label>渠道编码 <input name='channelCode' value='test' required></label><label>渠道代码位 <input name='channelSlotId' value='0' required></label><button>保存</button>";
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        const data = Object.fromEntries(new FormData(form));
+        try {
+          await api("/api/games/" + current + "/placements", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+          await openGame(current);
+        } catch (exc) { showError(exc); }
+      };
+      return form;
+    }
+
+    function table(title, columns, items) {
+      const wrap = document.createElement("div");
+      const heading = document.createElement("h2");
+      heading.textContent = title;
+      wrap.appendChild(heading);
+      const table = document.createElement("table");
+      const labels = {
+        product_id: "商品 ID",
+        name: "名称",
+        amount_fen: "金额（分）",
+        channel_code: "渠道",
+        channel_app_id: "渠道 appId",
+        package_name: "包名",
+        placement_id: "聚合广告位",
+        ad_type: "类型",
+        channel_slot_id: "代码位",
+        order_id: "订单",
+        status: "状态",
+        channel_user_id: "渠道用户号"
+      };
+      const head = document.createElement("tr");
+      columns.forEach((column) => {
+        const cell = document.createElement("th");
+        cell.textContent = labels[column] || column;
+        head.appendChild(cell);
+      });
+      table.appendChild(head);
+      items.forEach((item) => {
+        const row = document.createElement("tr");
+        columns.forEach((column) => {
+          const cell = document.createElement("td");
+          cell.textContent = item[column] == null ? "" : String(item[column]);
+          row.appendChild(cell);
+        });
+        if (title === "订单" && item.status === "notify_fail") {
+          const cell = document.createElement("td");
+          const button = document.createElement("button");
+          button.textContent = "补发";
+          button.onclick = async () => {
+            try {
+              await api("/api/orders/" + item.order_id + "/renotify", { method: "POST" });
+              await openGame(current);
+            } catch (exc) { showError(exc); }
+          };
+          cell.appendChild(button);
+          row.appendChild(cell);
+        }
+        table.appendChild(row);
+      });
+      wrap.appendChild(table);
+      return wrap;
+    }
+
+    document.querySelector("#game-form").onsubmit = async (event) => {
+      event.preventDefault();
+      error.textContent = "";
+      const data = Object.fromEntries(new FormData(event.target));
+      try {
+        const created = await api("/api/games", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+        document.querySelector("#created").textContent = "appId " + created.appId + "\nappKey " + created.appKey;
+        await loadGames();
+        await openGame(created.appId);
+      } catch (exc) { showError(exc); }
+    };
+
+    loadGames().catch(showError);
+  </script>
+</body>
+</html>
