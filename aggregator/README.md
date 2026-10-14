@@ -33,6 +33,7 @@ python3 aggregator/packager/pack.py \
 
 ## 文档
 
+- [开发说明](docs/开发说明.md)
 - [游戏接入](docs/游戏接入.md)
 - [游戏服与支付](docs/游戏服与支付.md)
 - [后台和打包](docs/后台和打包.md)
