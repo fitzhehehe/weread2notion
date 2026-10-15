@@ -1,0 +1,10 @@
+{
+  "appId": "g1",
+  "channelCode": "test",
+  "serverBaseUrl": "",
+  "serverReward": false,
+  "adapterClass": "com.aggregator.test.TestChannelAdapter",
+  "placements": {
+    "reward_main": "0"
+  }
+}
