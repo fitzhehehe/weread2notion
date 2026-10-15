@@ -7,6 +7,7 @@ import threading
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -237,6 +238,81 @@ class PublisherTest(unittest.TestCase):
         self.assertEqual(orders[0]["amount_fen"], 600)
         self.assertEqual(orders[0]["status"], "created")
         self.assertEqual(publisher.db().execute("SELECT COUNT(*) FROM reward_completions").fetchone()[0], 0)
+
+    def test_vivo_signature_matches_official_sample_and_form_notify(self):
+        sample = {
+            "appId": "123",
+            "cpOrderNumber": "123456878",
+            "extInfo": "扩展参数",
+            "notifyUrl": "http://127.0.0.1:8080/vivopay/vivoPay/testNotify",
+            "orderAmount": "1000",
+            "productDesc": "vivo Xplay",
+            "productName": "手机",
+            "balance": "用户余额",
+            "vip": "用户vip等级",
+            "level": "用户角色等级",
+            "party": "工会",
+            "roleId": "角色ID",
+            "roleName": "角色名",
+            "serverName": "区服信息",
+        }
+        self.assertEqual(publisher.vivo_sign(sample, "123456789123456"), "07e4198e86717626a6cbfdf1996c9e4a")
+        game = self.post("/api/games", {"name": "vivo", "kind": "offline"})
+        self.post(
+            f"/api/games/{game['appId']}/products",
+            {"productId": "gem_6", "name": "60钻", "amountFen": 600},
+        )
+        self.post(
+            f"/api/games/{game['appId']}/channels",
+            {
+                "channelCode": "vivo",
+                "channelAppId": "vivo-app",
+                "channelSecret": "vivo-key",
+                "notifyUrl": "https://pay.example/vivo",
+            },
+        )
+        created = self.post(
+            "/v1/orders",
+            {
+                "appId": game["appId"],
+                "channelCode": "vivo",
+                "channelUserId": "openid-1",
+                "productId": "gem_6",
+                "gameOrderId": "local-vivo",
+                "roleId": "r1",
+            },
+        )
+        fields = {
+            "appId": "vivo-app",
+            "cpOrderNumber": created["orderId"],
+            "notifyUrl": "https://pay.example/vivo",
+            "orderAmount": "600",
+            "productName": "gem_6",
+            "productDesc": "gem_6",
+            "roleId": "r1",
+        }
+        self.assertEqual(created["vivoSignature"], publisher.vivo_sign(fields, "vivo-key"))
+        fields.update(
+            {
+                "respCode": "200",
+                "respMsg": "交易完成",
+                "tradeType": "01",
+                "tradeStatus": "0000",
+                "orderNumber": "vivo-order",
+                "uid": "openid-1",
+            }
+        )
+        fields["signature"] = publisher.vivo_sign(fields, "vivo-key")
+        body = urllib.parse.urlencode(fields).encode()
+        request = urllib.request.Request(
+            self.base + "/v1/channels/vivo/pay-notify",
+            data=body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        with urllib.request.urlopen(request) as response:
+            self.assertEqual(response.read().decode(), "success")
+        status = publisher.one("SELECT status FROM orders WHERE order_id = ?", (created["orderId"],))
+        self.assertEqual(status["status"], "paid")
 
     def post(self, path, payload):
         data = json.dumps(payload).encode()

@@ -3,7 +3,7 @@
 | 渠道编码 | 类 | 登录和支付 | 广告 |
 | --- | --- | --- | --- |
 | oppo | `com.aggregator.channel.oppo.OppoAdapter` | OPPO 游戏中心 `GameCenterSDK` | 不包含广告联盟 |
-| vivo | `com.aggregator.channel.vivo.VivoAdapter` | `VivoUnionSDK` | 激励视频用广告联盟 `UnifiedVivoRewardVideoAd` |
+| vivo | `com.aggregator.channel.vivo.VivoAdapter` | 联运 SDK 4.9.3.1 的 `VivoUnionSDK` | 激励视频仍按广告联盟文档编写，广告 aar 还要登录后下载 |
 | huawei | `com.aggregator.channel.huawei.HuaweiAdapter` | 华为应用市场 HMS 账号、游戏和 IAP | 不包含华为广告 |
 | xiaomi | `com.aggregator.channel.xiaomi.XiaomiAdapter` | 小米游戏联运 `MiCommplatform` | 不包含米盟广告 |
 

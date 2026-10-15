@@ -19,6 +19,7 @@ import com.vivo.mobilead.unified.reward.UnifiedVivoRewardVideoAd;
 import com.vivo.mobilead.unified.reward.UnifiedVivoRewardVideoAdListener;
 import com.vivo.unionsdk.open.OrderResultInfo;
 import com.vivo.unionsdk.open.VivoAccountCallback;
+import com.vivo.unionsdk.open.VivoConstants;
 import com.vivo.unionsdk.open.VivoExitCallback;
 import com.vivo.unionsdk.open.VivoPayCallback;
 import com.vivo.unionsdk.open.VivoPayInfo;
@@ -107,22 +108,32 @@ public final class VivoAdapter implements ChannelAdapter {
             callback.onResult(false, "vivo 支付缺少服务端签名");
             return;
         }
+        String notifyUrl = request.notifyUrl() == null || request.notifyUrl().isBlank()
+                ? ChannelRuntime.param("notifyUrl")
+                : request.notifyUrl();
+        if (notifyUrl.isBlank()) {
+            callback.onResult(false, "vivo 支付缺少通知地址");
+            return;
+        }
         String orderId = request.orderId() == null || request.orderId().isBlank() ? request.gameOrderId() : request.orderId();
-        VivoPayInfo payInfo = new VivoPayInfo.Builder()
+        VivoPayInfo.Builder builder = new VivoPayInfo.Builder()
                 .setAppId(ChannelRuntime.param("channelAppId"))
                 .setCpOrderNo(orderId)
-                .setNotifyUrl(ChannelRuntime.param("notifyUrl"))
+                .setNotifyUrl(notifyUrl)
                 .setOrderAmount(String.valueOf(request.amountFen()))
                 .setProductName(request.productId())
                 .setProductDesc(request.productId())
-                .setRoleId(request.roleId())
                 .setVivoSignature(request.paySignature())
-                .setExtUid(openId)
-                .build();
+                .setExtUid(openId);
+        if (request.roleId() != null && !request.roleId().isBlank()) {
+            builder.setRoleId(request.roleId());
+        }
+        VivoPayInfo payInfo = builder.build();
         Ui.onMain(activity, () -> VivoUnionSDK.payV2(activity, payInfo, new VivoPayCallback() {
             @Override
             public void onVivoPayResult(int code, OrderResultInfo order) {
-                callback.onResult(code == 0, "vivo 支付结果 " + code);
+                // 客户端结果不发货。道具到账后才能 reportOrderComplete。
+                callback.onResult(code == VivoConstants.PAYMENT_RESULT_CODE_SUCCESS, "vivo 支付结果 " + code);
             }
         }));
     }

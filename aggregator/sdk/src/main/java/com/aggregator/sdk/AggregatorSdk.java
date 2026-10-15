@@ -99,7 +99,8 @@ public final class AggregatorSdk {
         if (request.orderId() == null || request.orderId().isBlank()) {
             try {
                 CreatedOrder order = createOn(server, request);
-                orderRequest = request.withOrder(order.orderId(), order.amountFen());
+                orderRequest = request.withServerPay(
+                        order.orderId(), order.amountFen(), order.paySignature(), order.notifyUrl());
             } catch (RuntimeException e) {
                 callback.onResult(PayResult.fail(e.getMessage()));
                 return;

@@ -106,12 +106,27 @@ def sign(secret: str, *parts: str) -> str:
     return hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
 
 
+def vivo_sign(params: dict, key: str) -> str:
+    filtered = {
+        name: value
+        for name, value in params.items()
+        if value not in (None, "") and name.lower() not in ("signature", "signmethod")
+    }
+    pre = "&".join(f"{name}={filtered[name]}" for name in sorted(filtered))
+    key_md5 = hashlib.md5(key.encode("utf-8")).hexdigest()
+    return hashlib.md5(f"{pre}&{key_md5}".encode("utf-8")).hexdigest()
+
+
 def connect(path: str) -> sqlite3.Connection:
     global CONN
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     CONN = sqlite3.connect(path, check_same_thread=False)
     CONN.row_factory = sqlite3.Row
     CONN.executescript(SCHEMA)
+    columns = {row[1] for row in CONN.execute("PRAGMA table_info(channel_bindings)")}
+    if "notify_url" not in columns:
+        CONN.execute("ALTER TABLE channel_bindings ADD COLUMN notify_url TEXT NOT NULL DEFAULT ''")
+        CONN.commit()
     return CONN
 
 
@@ -158,8 +173,27 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        body = self._body()
         path = parsed.path
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length else b""
+        content_type = self.headers.get("Content-Type", "")
+        if (
+            path.startswith("/v1/channels/")
+            and path.endswith("/pay-notify")
+            and "application/json" not in content_type
+        ):
+            channel = path.removeprefix("/v1/channels/").removesuffix("/pay-notify").strip("/")
+            if channel == "vivo":
+                self._vivo_form_notify(raw)
+                return
+        try:
+            body = json.loads(raw.decode() or "{}")
+        except json.JSONDecodeError:
+            self._send_error(400, "JSON 无效")
+            return
+        if not isinstance(body, dict):
+            self._send_error(400, "需要 JSON 对象")
+            return
         try:
             if path == "/api/games":
                 self._json(self._create_game(body), 201)
@@ -239,14 +273,16 @@ class Handler(BaseHTTPRequestHandler):
         self._require_game(app_id)
         channel = str(body.get("channelCode", "")).strip()
         secret = str(body.get("channelSecret", "")).strip()
+        notify_url = str(body.get("notifyUrl", "")).strip()
         if not channel or not secret:
             raise AppError(400, "渠道需要 channelCode 和 channelSecret")
         with LOCK:
             db().execute(
-                "INSERT INTO channel_bindings(app_id, channel_code, channel_app_id, package_name, channel_secret, enabled) "
-                "VALUES(?,?,?,?,?,1) ON CONFLICT(app_id, channel_code) DO UPDATE SET "
-                "channel_app_id=excluded.channel_app_id, package_name=excluded.package_name, channel_secret=excluded.channel_secret, enabled=1",
-                (app_id, channel, str(body.get("channelAppId", "")), str(body.get("packageName", "")), secret),
+                "INSERT INTO channel_bindings(app_id, channel_code, channel_app_id, package_name, channel_secret, enabled, notify_url) "
+                "VALUES(?,?,?,?,?,1,?) ON CONFLICT(app_id, channel_code) DO UPDATE SET "
+                "channel_app_id=excluded.channel_app_id, package_name=excluded.package_name, "
+                "channel_secret=excluded.channel_secret, enabled=1, notify_url=excluded.notify_url",
+                (app_id, channel, str(body.get("channelAppId", "")), str(body.get("packageName", "")), secret, notify_url),
             )
             db().commit()
         return {"appId": app_id, "channelCode": channel}
@@ -297,6 +333,9 @@ class Handler(BaseHTTPRequestHandler):
         )
         if product is None:
             raise AppError(404, "商品不存在")
+        notify_url = binding["notify_url"] if "notify_url" in binding.keys() else ""
+        if channel == "vivo" and (not binding["channel_app_id"] or not notify_url):
+            raise AppError(400, "vivo 渠道需要 channelAppId 和 notifyUrl")
         existing = one("SELECT * FROM orders WHERE app_id = ? AND game_order_id = ?", (app_id, game_order_id))
         if existing is not None:
             same = (
@@ -306,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
             )
             if not same:
                 raise AppError(409, "游戏订单号已用于另一笔订单")
-            return order_view(existing)
+            return self._order_payload(existing, binding, product)
         order_id = "o_" + secrets.token_hex(8)
         with LOCK:
             db().execute(
@@ -316,7 +355,54 @@ class Handler(BaseHTTPRequestHandler):
             )
             db().commit()
         created = one("SELECT * FROM orders WHERE order_id = ?", (order_id,))
-        return order_view(created)
+        return self._order_payload(created, binding, product)
+
+    def _order_payload(self, order: sqlite3.Row, binding: sqlite3.Row, product: sqlite3.Row) -> dict:
+        view = order_view(order)
+        if order["channel_code"] != "vivo":
+            return view
+        notify_url = binding["notify_url"] if "notify_url" in binding.keys() else ""
+        if not binding["channel_app_id"] or not notify_url:
+            raise AppError(400, "vivo 渠道需要 channelAppId 和 notifyUrl")
+        fields = vivo_pay_fields(order, binding, order["product_id"])
+        view["vivoSignature"] = vivo_sign(fields, binding["channel_secret"])
+        view["notifyUrl"] = notify_url
+        return view
+
+    def _vivo_form_notify(self, raw: bytes) -> None:
+        form = {key: values[0] for key, values in parse_qs(raw.decode("utf-8")).items()}
+        order = one("SELECT * FROM orders WHERE order_id = ?", (form.get("cpOrderNumber", ""),))
+        if order is None or order["channel_code"] != "vivo":
+            self._text("fail")
+            return
+        binding = one(
+            "SELECT * FROM channel_bindings WHERE app_id = ? AND channel_code = 'vivo'",
+            (order["app_id"],),
+        )
+        if binding is None or not hmac.compare_digest(vivo_sign(form, binding["channel_secret"]), form.get("signature", "")):
+            self._text("fail")
+            return
+        if form.get("respCode") != "200" or form.get("tradeStatus") != "0000":
+            self._text("fail")
+            return
+        if form.get("appId") != binding["channel_app_id"]:
+            self._text("fail")
+            return
+        if form.get("orderAmount") != str(int(order["amount_fen"])):
+            self._text("fail")
+            return
+        if order["status"] == "notified" or order["status"] == "paid":
+            self._text("success")
+            return
+        with LOCK:
+            db().execute("UPDATE orders SET status = 'paid' WHERE order_id = ?", (order["order_id"],))
+            db().commit()
+        try:
+            self._deliver(order["order_id"])
+        except AppError:
+            self._text("fail")
+            return
+        self._text("success")
 
     def _pay_notify(self, channel: str, body: dict) -> dict:
         app_id = str(body.get("appId", ""))
@@ -485,6 +571,14 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _text(self, body: str, status: int = 200) -> None:
+        data = body.encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def _json(self, payload: dict | list, status: int = 200) -> None:
         data = json.dumps(payload, ensure_ascii=False).encode()
         self.send_response(status)
@@ -507,6 +601,20 @@ class AppError(Exception):
         super().__init__(message)
         self.status = status
         self.message = message
+
+
+def vivo_pay_fields(order: sqlite3.Row, binding: sqlite3.Row, product_id: str) -> dict:
+    notify_url = binding["notify_url"] if "notify_url" in binding.keys() else ""
+    fields = {
+        "appId": binding["channel_app_id"],
+        "cpOrderNumber": order["order_id"],
+        "notifyUrl": notify_url,
+        "orderAmount": str(int(order["amount_fen"])),
+        "productName": product_id,
+        "productDesc": product_id,
+        "roleId": order["role_id"],
+    }
+    return {key: value for key, value in fields.items() if value}
 
 
 def order_view(row: sqlite3.Row) -> dict:

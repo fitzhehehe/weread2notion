@@ -30,11 +30,7 @@ public final class HttpPublisherServer implements PublisherServer {
         body.put("gameOrderId", request.gameOrderId());
         body.put("roleId", request.roleId() == null ? "" : request.roleId());
         Map<String, Object> parsed = post("/v1/orders", body);
-        return new CreatedOrder(
-                Json.text(parsed, "orderId"),
-                Json.number(parsed, "amountFen"),
-                Json.text(parsed, "productId"),
-                Json.text(parsed, "status"));
+        return readOrder(parsed);
     }
 
     public CreatedOrder createOrder(String channelCode, PayRequest request) {
@@ -46,11 +42,17 @@ public final class HttpPublisherServer implements PublisherServer {
         body.put("gameOrderId", request.gameOrderId());
         body.put("roleId", request.roleId() == null ? "" : request.roleId());
         Map<String, Object> parsed = post("/v1/orders", body);
+        return readOrder(parsed);
+    }
+
+    private static CreatedOrder readOrder(Map<String, Object> parsed) {
         return new CreatedOrder(
                 Json.text(parsed, "orderId"),
                 Json.number(parsed, "amountFen"),
                 Json.text(parsed, "productId"),
-                Json.text(parsed, "status"));
+                Json.text(parsed, "status"),
+                Json.text(parsed, "vivoSignature"),
+                Json.text(parsed, "notifyUrl"));
     }
 
     @Override

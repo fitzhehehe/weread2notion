@@ -113,7 +113,7 @@
 
     function formChannel() {
       const form = document.createElement("form");
-      form.innerHTML = "<h2>渠道</h2><label>渠道编码 <input name='channelCode' value='test' required></label><label>渠道 appId <input name='channelAppId'></label><label>包名 <input name='packageName'></label><label>渠道密钥 <input name='channelSecret' required></label><button>保存</button>";
+      form.innerHTML = "<h2>渠道</h2><label>渠道编码 <input name='channelCode' value='test' required></label><label>渠道 appId <input name='channelAppId'></label><label>包名 <input name='packageName'></label><label>渠道密钥 <input name='channelSecret' required></label><label>支付通知地址 <input name='notifyUrl' placeholder='vivo 必填'></label><button>保存</button>";
       form.onsubmit = async (event) => {
         event.preventDefault();
         const data = Object.fromEntries(new FormData(form));
